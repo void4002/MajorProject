@@ -18,7 +18,7 @@ export function TravelPlanForm() {
     setError(null);
     setItineraryText(null);
 
-    const fullQuery = `${travelPlan} Give some itineraries like itinerary 1: day1: day2: ... ,itinerary 2: ....`; // Append additional text
+    const fullQuery = `${travelPlan} Give some itineraries like itinerary 1: day1: day2: ... ,itinerary 2: .... include accomodations, estimated budget, travell options, etc.`; // Append additional text
 
     try {
       const response = await fetch("http://localhost:5000/search", {
