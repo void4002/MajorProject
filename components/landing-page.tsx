@@ -9,6 +9,7 @@ import { Header } from "./header";
 import { Footer } from "./footer";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import PhotoGallery from "./photo";
 
 export function LandingPage() {
   const [showSignIn, setShowSignIn] = useState(false);
@@ -22,13 +23,12 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
       <main className="flex-grow relative">
         {/* Background Image with Overlay */}
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
-            backgroundImage: "url('https://img.freepik.com/free-vector/realistic-travel-background-with-elements_52683-77784.jpg?t=st=1742826754~exp=1742830354~hmac=5c95d099bf1bc34f60f9f18a726d00755ac70240f431139e0cd29c8dd4a1273b&w=1380')", // Change this to an actual high-quality travel image
+            backgroundImage: "url('https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1920&q=80')", // Change this to an actual high-quality travel image
             backgroundBlendMode: "overlay",
           }}
         />
@@ -85,6 +85,24 @@ export function LandingPage() {
               </>
             )}
           </motion.div>
+        </div>
+        <div className="relative py-20 bg-black/80 backdrop-blur-sm">
+          <div className="container mx-auto px-4">
+            <motion.div
+              className="text-center mb-12"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+              viewport={{ once: true, amount: 0.2 }}
+            >
+              <h2 className="text-3xl md:text-4xl font-serif text-white mb-4">Popular Destinations</h2>
+              <p className="text-lg text-gray-300 max-w-2xl mx-auto">
+                Explore breathtaking locations from around the world that will inspire your next adventure
+              </p>
+            </motion.div>
+            
+            <PhotoGallery />
+          </div>
         </div>
 
         {/* Authentication Forms */}

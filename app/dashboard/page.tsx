@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth-provider";
 import { TravelPlanForm } from "@/components/travel-plan-form";
 import { ItineraryList } from "@/components/itinerary-list";
 import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
+import { MapPin, Star, Cloud, Route, Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Itinerary } from "@/types/itinerary";
 
@@ -167,20 +167,20 @@ export default function Dashboard() {
     return new Promise((resolve) => {
       // Create modal container
       const modalContainer = document.createElement('div');
-      modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in';
       
       // Create modal content
       modalContainer.innerHTML = `
-        <div class="bg-white p-6 rounded-lg max-w-md w-full">
-          <h2 class="text-xl font-bold mb-4">Rate This Itinerary</h2>
-          <p class="mb-4">How would you rate this travel plan?</p>
-          <div class="flex justify-center space-x-2 mb-6">
+        <div class="bg-white p-6 rounded-xl shadow-xl max-w-md w-full animate-scale-up">
+          <h2 class="text-xl font-bold mb-4 text-teal-700">Rate This Itinerary</h2>
+          <p class="mb-4 text-gray-600">How would you rate this travel plan?</p>
+          <div class="flex justify-center space-x-3 mb-6">
             ${[1, 2, 3, 4, 5].map(num => 
-              `<button class="rating-btn w-12 h-12 rounded-full border-2 border-gray-300 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black" data-rating="${num}">${num}</button>`
+              `<button class="rating-btn w-12 h-12 rounded-full border-2 border-teal-300 hover:bg-teal-50 hover:border-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all duration-200" data-rating="${num}">${num}</button>`
             ).join('')}
           </div>
           <div class="flex justify-end space-x-4">
-            <button class="cancel-btn px-4 py-2 bg-gray-200 text-gray-800 rounded-lg">Cancel</button>
+            <button class="cancel-btn px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
           </div>
         </div>
       `;
@@ -354,7 +354,7 @@ export default function Dashboard() {
     }
   };
 
- const getTripRoute = async (itineraryText: string) => {
+  const getTripRoute = async (itineraryText: string) => {
     // OpenRouteService API key (free tier)
     const ORS_API_KEY = '5b3ce3597851110001cf62485d2496f98a1c4b1f89b71df05760b43c';
 
@@ -386,31 +386,13 @@ export default function Dashboard() {
     // Function to extract locations mentioned in the text
     const extractLocations = (text: string) => {
         const foundLocations = [];
-        const unroutedLocations = [];
-
-        // Split the itinerary into parts for more flexible matching
-        const textParts = text.split(/[,\s-]+/);
-
         for (const [locationName, locationData] of Object.entries(goaLocations)) {
-            // More flexible matching
             const regex = new RegExp(`\\b(${locationName})\\b`, 'i');
-            const isMatch = textParts.some(part => regex.test(part));
-
-            if (isMatch) {
+            if (regex.test(text)) {
                 foundLocations.push(locationData);
             }
         }
-
-        // Collect locations that weren't matched
-        const matchedLocationNames = foundLocations.map(loc => loc.name.toLowerCase());
-        textParts.forEach(part => {
-            const normalizedPart = part.toLowerCase();
-            if (normalizedPart.length > 2 && !matchedLocationNames.includes(normalizedPart)) {
-                unroutedLocations.push(part);
-            }
-        });
-
-        return { routedLocations: foundLocations, unroutedLocations };
+        return foundLocations;
     };
 
     // Haversine formula for distance calculation
@@ -459,17 +441,17 @@ export default function Dashboard() {
         return route;
     };
 
-    // Function to get route between two points
+    // Function to get route between two points with geometry
     const getRoutesBetweenPoints = async (locations) => {
         const routes = [];
-        const fullRouteCoordinates = [];
+        const geometries = [];
 
         for (let i = 0; i < locations.length - 1; i++) {
             try {
-                const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car', {
+                const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
                     method: 'POST',
                     headers: {
-                        'Accept': 'application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8',
+                        'Accept': 'application/json, application/geo+json',
                         'Content-Type': 'application/json',
                         'Authorization': ORS_API_KEY
                     },
@@ -482,181 +464,152 @@ export default function Dashboard() {
                 });
 
                 if (!response.ok) {
-                    console.warn(`Routing failed between ${locations[i].name} and ${locations[i+1].name}`);
-                    continue;
+                    throw new Error(`Routing failed between ${locations[i].name} and ${locations[i+1].name}`);
                 }
 
                 const routeData = await response.json();
                 
-                // Extract route geometry
-                const routeGeometry = routeData.routes[0].geometry;
-                const decodedGeometry = decodeOrsGeometry(routeGeometry);
-                fullRouteCoordinates.push(...decodedGeometry);
-
+                // Extract route summary
+                const feature = routeData.features[0];
+                const distance = feature.properties.summary.distance / 1000; // Convert to kilometers
+                const duration = feature.properties.summary.duration / 3600; // Convert to hours
+                
+                // Extract geometry
+                const routeGeometry = feature.geometry.coordinates;
+                
                 routes.push({
                     start: locations[i].name,
                     end: locations[i+1].name,
-                    distance: routeData.routes[0].summary.distance / 1000, // Convert to kilometers
-                    duration: routeData.routes[0].summary.duration / 3600, // Convert to hours
-                    geometry: decodedGeometry
+                    distance: distance,
+                    duration: duration
                 });
+                
+                geometries.push(routeGeometry);
             } catch (error) {
-                console.warn(`Route fetch error between ${locations[i].name} and ${locations[i+1].name}:`, error);
+                console.error('Route fetch error:', error);
             }
         }
 
-        return { routes, fullRouteCoordinates };
-    };
-
-    // Decode OpenRouteService geometry
-    const decodeOrsGeometry = (encodedGeometry) => {
-        const precision = 1e5;
-        const coordinates = [];
-        let index = 0;
-        let lat = 0;
-        let lng = 0;
-
-        while (index < encodedGeometry.length) {
-            let result = 1;
-            let shift = 0;
-            let byte;
-            let dLat = 0;
-            let dLng = 0;
-
-            do {
-                byte = encodedGeometry.charCodeAt(index++) - 63;
-                dLat += (byte & 0x1f) * result;
-                result *= 0x20;
-            } while (byte >= 0x20);
-
-            if (dLat & 1) dLat = ~(dLat >> 1);
-            else dLat >>= 1;
-
-            result = 1;
-            do {
-                byte = encodedGeometry.charCodeAt(index++) - 63;
-                dLng += (byte & 0x1f) * result;
-                result *= 0x20;
-            } while (byte >= 0x20);
-
-            if (dLng & 1) dLng = ~(dLng >> 1);
-            else dLng >>= 1;
-
-            lat += dLat;
-            lng += dLng;
-
-            coordinates.push([lng / precision, lat / precision]);
-        }
-
-        return coordinates;
+        return { routes, geometries };
     };
 
     try {
         // Extract locations from the itinerary
-        const { routedLocations, unroutedLocations } = extractLocations(itineraryText);
+        const locations = extractLocations(itineraryText);
 
-        if (routedLocations.length === 0) {
+        if (locations.length === 0) {
             alert('No specific locations found in the itinerary.');
             return;
         }
 
         // Solve TSP to get optimized route
-        const optimizedRoute = solveTSP(routedLocations);
+        const optimizedRoute = solveTSP(locations);
 
-        // Get detailed routes between points
-        const { routes, fullRouteCoordinates } = await getRoutesBetweenPoints(optimizedRoute);
+        // Get detailed routes between points with geometry
+        const { routes: routeDetails, geometries } = await getRoutesBetweenPoints(optimizedRoute);
 
         // Calculate total distance and duration
-        const totalDistance = routes.reduce((sum, route) => sum + route.distance, 0);
-        const totalDuration = routes.reduce((sum, route) => sum + route.duration, 0);
+        const totalDistance = routeDetails.reduce((sum, route) => sum + route.distance, 0);
+        const totalDuration = routeDetails.reduce((sum, route) => sum + route.duration, 0);
 
-        // Create modal with map
+        // Create modal to display route information with map
         const modalContainer = document.createElement('div');
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
         
         modalContainer.innerHTML = `
-            <div class="bg-white p-6 rounded-lg max-w-4xl w-full h-[80vh] flex flex-col">
-                <h2 class="text-2xl font-bold mb-4">Optimized Goa Trip Route</h2>
-                <div id="map" class="flex-grow rounded-lg"></div>
-                <div class="mt-4">
-                    <h3 class="font-semibold text-lg">Route Details</h3>
-                    ${routes.map(route => `
-                        <div class="border-b py-2">
-                            <p>📍 ${route.start} to ${route.end}</p>
-                            <p>📏 Distance: ${route.distance.toFixed(1)} km</p>
-                            <p>⏱️ Duration: ${route.duration.toFixed(1)} hours</p>
+            <div class="bg-white p-6 rounded-lg max-w-4xl w-full h-5/6 flex flex-col">
+                <h2 class="text-2xl font-bold mb-2">Optimized Goa Trip Route</h2>
+                
+                <div class="flex flex-row h-full space-x-4">
+                    <!-- Map container -->
+                    <div id="map-container" class="w-2/3 h-full rounded border"></div>
+                    
+                    <!-- Route details -->
+                    <div class="w-1/3 flex flex-col overflow-auto">
+                        <div class="mb-4">
+                            <h3 class="font-semibold text-lg">Route Details</h3>
+                            <div id="route-details" class="space-y-2 overflow-y-auto max-h-96">
+                                ${routeDetails.map(route => `
+                                    <div class="border-b py-2">
+                                        <p>📍 ${route.start} → ${route.end}</p>
+                                        <p>📏 Distance: ${route.distance.toFixed(1)} km</p>
+                                        <p>⏱️ Duration: ${route.duration.toFixed(1)} hours</p>
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
-                    `).join('')}
-                    <div class="mt-2">
-                        <p>📏 Total Distance: ${totalDistance.toFixed(1)} km</p>
-                        <p>⏱️ Total Estimated Duration: ${totalDuration.toFixed(1)} hours</p>
+                        
+                        <div class="mt-auto">
+                            <h3 class="font-semibold text-lg">Trip Summary</h3>
+                            <p>📏 Total Distance: ${totalDistance.toFixed(1)} km</p>
+                            <p>⏱️ Total Duration: ${totalDuration.toFixed(1)} hours</p>
+                        </div>
                     </div>
-                    ${unroutedLocations.length > 0 ? `
-                    <div class="mt-2 text-gray-600">
-                        <p>Note: Some locations could not be routed: ${unroutedLocations.join(', ')}</p>
-                    </div>
-                    ` : ''}
                 </div>
-                <button class="close-btn px-4 py-2 bg-black text-white rounded-lg mt-4">Close</button>
+                
+                <button class="close-btn px-4 py-2 bg-black text-white rounded-lg mt-4 self-end">Close</button>
             </div>
         `;
 
         document.body.appendChild(modalContainer);
 
-        // Dynamically load Leaflet
-        const loadLeaflet = () => {
-            return new Promise((resolve, reject) => {
-                // Check if Leaflet is already loaded
-                if (window.L) {
-                    resolve(window.L);
-                    return;
-                }
-
-                // Load Leaflet CSS
-                const leafletCSS = document.createElement('link');
-                leafletCSS.rel = 'stylesheet';
-                leafletCSS.href = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css';
-                document.head.appendChild(leafletCSS);
-
-                // Load Leaflet JS
-                const leafletScript = document.createElement('script');
-                leafletScript.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
-                leafletScript.onload = () => resolve(window.L);
-                leafletScript.onerror = reject;
-                document.body.appendChild(leafletScript);
-            });
-        };
-
-        // Initialize map after Leaflet is loaded
-        loadLeaflet().then((L) => {
-            // Initialize map
-            const map = L.map('map').setView([15.4909, 73.8278], 10);
-
-            // Add OpenStreetMap tiles
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-
-            // Add route line if coordinates exist
-            if (fullRouteCoordinates.length > 0) {
-                const routePolyline = L.polyline(fullRouteCoordinates, {
-                    color: 'blue',
-                    weight: 5,
-                    opacity: 0.7
+        // Initialize Leaflet map after modal is added to DOM
+        setTimeout(() => {
+            // Create map
+            const mapContainer = document.getElementById('map-container');
+            
+            // Add Leaflet CSS
+            const leafletCSS = document.createElement('link');
+            leafletCSS.rel = 'stylesheet';
+            leafletCSS.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css';
+            document.head.appendChild(leafletCSS);
+            
+            // Add Leaflet JS
+            const leafletScript = document.createElement('script');
+            leafletScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+            leafletScript.onload = () => {
+                // Now we can use L (Leaflet)
+                const map = L.map(mapContainer).setView([15.4, 73.8], 10); // Center on Goa
+                
+                // Add the base map layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
                 }).addTo(map);
-
-                // Fit map to route bounds
-                map.fitBounds(routePolyline.getBounds());
-            }
-
-            // Add markers for each location
-            optimizedRoute.forEach((location, index) => {
-                const marker = L.marker(location.coordinates.slice().reverse()).addTo(map);
-                marker.bindPopup(`${index + 1}. ${location.name}`);
-            });
-        }).catch((error) => {
-            console.error('Failed to load Leaflet:', error);
-        });
+                
+                // Add markers for each location
+                optimizedRoute.forEach((location, index) => {
+                    const markerColor = index === 0 ? 'green' : (index === optimizedRoute.length - 1 ? 'red' : 'blue');
+                    
+                    // Create custom icon
+                    const icon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style="background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
+                        iconSize: [12, 12],
+                        iconAnchor: [6, 6]
+                    });
+                    
+                    // Add marker with popup
+                    L.marker([location.coordinates[1], location.coordinates[0]], { icon })
+                        .addTo(map)
+                        .bindPopup(`<b>${index + 1}. ${location.name}</b>`);
+                });
+                
+                // Add route lines in blue
+                geometries.forEach(routePoints => {
+                    const latLngs = routePoints.map(point => [point[1], point[0]]);
+                    L.polyline(latLngs, {
+                        color: '#0066CC',
+                        weight: 4,
+                        opacity: 0.8
+                    }).addTo(map);
+                });
+                
+                // Fit map to show all points
+                const bounds = optimizedRoute.map(loc => [loc.coordinates[1], loc.coordinates[0]]);
+                map.fitBounds(bounds);
+            };
+            document.body.appendChild(leafletScript);
+        }, 100);
 
         // Add close button functionality
         const closeButton = modalContainer.querySelector('.close-btn');
@@ -664,94 +617,221 @@ export default function Dashboard() {
             document.body.removeChild(modalContainer);
         });
 
+        // Close on outside click
+        modalContainer.addEventListener('click', (e) => {
+            if (e.target === modalContainer) {
+                document.body.removeChild(modalContainer);
+            }
+        });
+
     } catch (error) {
         console.error('Goa route error:', error);
         alert('Failed to generate Goa trip route. Please try again.');
     }
 };
-  
-  if (!user || !user._id) {
-    return <div className="container mx-auto p-4 text-center">Loading user data...</div>;
-  }
 
+const getBackgroundImage = (itinerary, index) => {
+  const places = ["goa", "leh", "delhi", "mumbai", "manali", "jaipur", "kerala", "varanasi", "shimla"];
+  const lowerItinerary = itinerary.toLowerCase();
+  const matchedPlace = places.find(place => lowerItinerary.includes(place));
+  return matchedPlace ? `/images/${matchedPlace}.jpg` : `/api/placeholder/600/${320 + (index * 15)}`;
+};
+  
+if (!user || !user._id) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header />
-      <main className="flex-grow container mx-auto p-4">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-4">Welcome, {user.name || "Traveler"}!</h1>
-          <TravelPlanForm onItinerariesGenerated={handleItinerariesGenerated} userId={user._id} />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-teal-white">
+      <div className="text-center animate-pulse-soft">
+        <Loader2 className="h-12 w-12 animate-spin text-teal-600 mx-auto mb-4" />
+        <p className="text-lg text-teal-700">Loading your personalized travel dashboard...</p>
+      </div>
+    </div>
+  );
+}
+
+return (
+  <div className="min-h-screen flex flex-col bg-gradient-to-b from-blue-50 to-white">
+    <Header />
+    <div className="w-full h-64 md:h-80 relative overflow-hidden">
+      <div className="absolute inset-0 bg-cover bg-center"></div>
+      <div className="absolute inset-0 bg-travel-teal-dark/30"></div>
+      <div className="container mx-auto h-full flex items-center px-4 relative z-10">
+        <div className="max-w-2xl">
+          <h1 className="text-4xl md:text-5xl font-bold mb-2 text-travel-teal animate-fade-in drop-shadow-lg">
+            Welcome, <span className="text-travel-azure">{user.name || "Traveler"}</span>!
+          </h1>
+          <p className="text-travel-teal mb-8 opacity-90 max-w-xl text-lg drop-shadow-md">
+            Create your perfect journey with personalized travel plans tailored just for you
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <main className="flex-grow container mx-auto px-4 py-8 animate-fade-in -mt-16 relative z-20">
+      <div className="mb-16 text-center sm:text-left">
+        <div className="itinerary-card p-6 animate-scale-up border border-gray-200 rounded-lg shadow-lg bg-white backdrop-blur-md">
+          <TravelPlanForm onItinerariesGenerated={handleItinerariesGenerated} />
+        </div>
+      </div>
+      
+      {generatedItineraries.length > 0 && (
+        <div className="mb-16 animate-fade-in">
+          <div className="flex items-center mb-8">
+            <span className="w-2 h-8 bg-travel-teal rounded-full mr-3"></span>
+            <h2 className="text-2xl font-bold text-travel-teal-dark flex items-center">
+              Generated Itineraries
+              <span className="ml-3 bg-travel-teal/10 text-travel-teal text-sm py-1 px-3 rounded-full">Just for you</span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {generatedItineraries.map((item, index) => (
+              <div key={index} className="itinerary-card animate-scale-up border-2 border-travel-teal rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden" style={{animationDelay: `${index * 100}ms`}}>
+                <div className="h-40 relative">
+                  <div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage: `url('${getBackgroundImage(item.description, index)}')`}}></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                  <div className="absolute bottom-0 left-0 p-4">
+                    <span className="inline-block bg-travel-teal text-white text-xs font-semibold px-3 py-1 rounded-full">
+                      Custom Itinerary #{index + 1}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="whitespace-pre-wrap mb-4 text-gray-700 max-h-48 overflow-y-auto">{item.itinerary}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      <div className="mb-16 animate-fade-in animation-delay-200">
+        <div className="flex items-center mb-8">
+          <span className="w-2 h-8 bg-travel-azure rounded-full mr-3"></span>
+          <h2 className="text-2xl font-bold text-travel-teal-dark flex items-center">
+            Recommended For You
+            <span className="ml-3 bg-travel-azure/20 text-travel-teal-dark text-sm py-1 px-3 rounded-full">Trending Destinations</span>
+          </h2>
         </div>
         
-        {generatedItineraries.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4">Generated Itineraries</h2>
-            <ItineraryList itineraries={generatedItineraries} userId={user._id} onSave={fetchSavedItineraries} />
+        {isLoadingRecommendations ? (
+          <div className="flex items-center justify-center p-12 border border-gray-200 rounded-lg bg-white">
+            <Loader2 className="h-8 w-8 animate-spin text-travel-teal mr-2" />
+            <p className="text-travel-teal-dark">Discovering perfect trips for you...</p>
           </div>
-        )}
-        
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">Recommended For You</h2>
-          {isLoadingRecommendations ? (
-            <p>Loading recommendations...</p>
-          ) : recommendedItineraries.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recommendedItineraries.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className={`text-xs font-medium mr-2 px-2.5 py-0.5 rounded ${item.isGeneric ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
-                      {item.isGeneric ? 'Generic Recommendation' : 'Personalized'}
-                    </span>
+        ) : recommendedItineraries.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {recommendedItineraries.map((item, index) => (
+              <div key={index} className="recommended-card animate-scale-up border-2 border-travel-azure rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden" style={{animationDelay: `${index * 100}ms`}}>
+                <div className="h-40 relative">
+                  <div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage: `url('${getBackgroundImage(item.itinerary, index)}')`}}></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                  <div className="absolute top-0 right-0 p-3">
                     {item.matchScore && (
-                      <span className="text-sm text-gray-600">{Math.round(item.matchScore * 100)}% match</span>
+                      <span className="text-sm font-medium bg-white text-travel-teal-dark px-2 py-1 rounded-full flex items-center shadow-md">
+                        <Star className="h-3 w-3 mr-1 text-travel-teal" fill="currentColor" /> 
+                        {Math.round(item.matchScore * 100)}% match
+                      </span>
                     )}
                   </div>
-                  <div className="whitespace-pre-wrap mb-4">{item.itinerary}</div>
-                  <div className="flex space-x-4 mt-4">
+                  <div className="absolute bottom-0 left-0 p-4">
+                    <span className={`text-xs font-medium px-3 py-1 rounded-full text-white ${item.isGeneric ? 'bg-travel-azure' : 'bg-travel-teal'}`}>
+                      {item.isGeneric ? 'Curated Trip' : 'Personalized for You'}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-6 bg-white">
+                  <div className="whitespace-pre-wrap mb-4 text-gray-700 max-h-48 overflow-y-auto">{item.itinerary}</div>
+                  <div className="mt-4">
                     <button 
-                      className="px-4 py-2 bg-black text-white rounded-lg hover:from-blue-600 hover:to-indigo-700" 
+                      className="teal-button w-full flex items-center justify-center"
                       onClick={() => saveRecommendedItinerary(item.itinerary)}
                     >
-                      Save to My Itineraries
+                      <Save className="h-4 w-4 mr-2" /> Save to My Itineraries
                     </button>
                   </div>
                 </div>
-              ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="itinerary-card p-8 text-center border border-gray-200 rounded-lg bg-white bg-[url('/api/placeholder/800/200')] bg-opacity-10 bg-blend-overlay">
+            <div className="py-8">
+              <p className="text-gray-600 mb-4">No recommendations available yet. Continue using the platform to get personalized suggestions!</p>
+          
             </div>
-          ) : (
-            <p>No recommendations available yet. Continue using the platform to get personalized recommendations!</p>
-          )}
+          </div>
+        )}
+      </div>
+      
+      <div className="mb-12 animate-fade-in animation-delay-300">
+        <div className="flex items-center mb-8">
+          <span className="w-2 h-8 bg-travel-teal-dark rounded-full mr-3"></span>
+          <h2 className="text-2xl font-bold text-travel-teal-dark flex items-center">
+            Your Saved Itineraries
+            <span className="ml-3 bg-travel-teal-dark/10 text-travel-teal-dark text-sm py-1 px-3 rounded-full">Ready to explore</span>
+          </h2>
         </div>
         
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4">Your Saved Itineraries</h2>
-          {isLoading ? (
-            <p>Loading saved itineraries...</p>
-          ) : savedItineraries.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {savedItineraries.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4 shadow-sm">
-                  <div className="whitespace-pre-wrap">{item.itinerary}</div>
-                  <div className="flex space-x-4 mt-4">
-                    <button className="px-4 py-2 bg-black text-white rounded-lg" onClick={() => rateItinerary(item.itinerary)}>
-                      Rate Itinerary
+        {isLoading ? (
+          <div className="flex items-center justify-center p-12 border border-gray-200 rounded-lg bg-white">
+            <Loader2 className="h-8 w-8 animate-spin text-travel-teal mr-2" />
+            <p className="text-travel-teal-dark">Loading your travel collection...</p>
+          </div>
+        ) : savedItineraries.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {savedItineraries.map((item, index) => (
+              <div key={index} className="itinerary-card animate-scale-up border-2 border-travel-teal-dark rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden" style={{animationDelay: `${index * 100}ms`}}>
+                <div className="h-40 relative">
+                  <div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage: `url('${getBackgroundImage(item.itinerary, index)}')`}}></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                  <div className="absolute top-3 right-3">
+                    <span className="inline-flex items-center bg-white/90 backdrop-blur-sm text-travel-teal-dark text-xs font-medium px-2 py-1 rounded-full">
+                      <MapPin className="h-3 w-3 mr-1 text-travel-teal" /> Saved Trip
+                    </span>
+                  </div>
+                </div>
+                <div className="p-6 bg-white">
+                  <div className="whitespace-pre-wrap mb-5 text-gray-700 max-h-48 overflow-y-auto">{item.itinerary}</div>
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    <button 
+                      className="col-span-1 teal-button-outline flex items-center justify-center text-sm py-2 px-1 border border-travel-teal rounded-md hover:bg-travel-teal/5 transition-colors" 
+                      onClick={() => rateItinerary(item.itinerary)}
+                    >
+                      <Star className="h-4 w-4 mr-1" /> Rate
                     </button>
-                    <button className="px-4 py-2 bg-black text-white rounded-lg" onClick={() => getWeather(item.itinerary)}>
-                      Get Weather
+                    <button 
+                      className="col-span-1 teal-button-outline flex items-center justify-center text-sm py-2 px-1 border border-travel-teal rounded-md hover:bg-travel-teal/5 transition-colors" 
+                      onClick={() => getWeather(item.itinerary)}
+                    >
+                      <Cloud className="h-4 w-4 mr-1" /> Weather
                     </button>
-                    <button className="px-4 py-2 bg-black text-white rounded-lg" onClick={() => getTripRoute(item.itinerary)}>
-                      Get Trip Route
+                    <button 
+                      className="col-span-1 teal-button-outline flex items-center justify-center text-sm py-2 px-1 border border-travel-teal rounded-md hover:bg-travel-teal/5 transition-colors" 
+                      onClick={() => getTripRoute(item.itinerary)}
+                    >
+                      <MapPin className="h-4 w-4 mr-1" /> Route
                     </button>
                   </div>
                 </div>
-              ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center border border-gray-200 rounded-lg bg-white bg-[url('/api/placeholder/800/200')] bg-opacity-10 bg-blend-overlay">
+            <div className="py-8">
+              <p className="text-gray-600 mb-4">No saved itineraries yet. Create and save some travel plans to see them here!</p>
+              
             </div>
-          ) : (
-            <p>No saved itineraries yet. Generate and save some travel plans!</p>
-          )}
-        </div>
-      </main>
-      <Footer />
+          </div>
+        )}
+      </div>
+      
+    </main>
+    
+    <div className="bg-travel-teal-dark/10 py-6">
+      <div className="container mx-auto px-4">
+        <p className="text-center text-travel-teal-dark/60 text-sm">© 2025 JourneyGenie | Create memories that last a lifetime</p>
+      </div>
     </div>
+  </div>
   );
 }

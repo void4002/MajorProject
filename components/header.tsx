@@ -3,15 +3,30 @@
 import Link from "next/link"
 import { useAuth } from "./auth-provider"
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
-import { Menu } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Menu, Plane } from "lucide-react";
+import { motion } from "framer-motion";
 
 export function Header() {
   const { user, signOut } = useAuth()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const planeRef = useRef(null)
+  const [planePosition, setPlanePosition] = useState(0)
+  
+  useEffect(() => {
+    const updatePlanePosition = () => {
+      if (planeRef.current) {
+        const rect = planeRef.current.getBoundingClientRect()
+        setPlanePosition(rect.x)
+      }
+    }
+    
+    const interval = setInterval(updatePlanePosition, 50)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
-    <header className="bg-white shadow-sm">
+    <header className="relative bg-white shadow-sm overflow-hidden">
       <div className="container mx-auto px-4 py-4">
         <div className="flex justify-between items-center">
           <Link href="/" className="text-2xl font-bold text-teal-600">
@@ -45,7 +60,12 @@ export function Header() {
           </div>
         </div>
         {isMenuOpen && (
-          <div className="mt-4 md:hidden">
+          <motion.div 
+            className="mt-4 md:hidden"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
             {user ? (
               <>
                 <Link
@@ -57,8 +77,8 @@ export function Header() {
                 </Link>
                 <Button
                   onClick={() => {
-                    signOut()
-                    setIsMenuOpen(false)
+                    if (signOut) signOut();
+                    setIsMenuOpen(false);
                   }}
                   variant="outline"
                   className="w-full mt-2"
@@ -84,10 +104,38 @@ export function Header() {
                 </Link>
               </>
             )}
-          </div>
+          </motion.div>
         )}
       </div>
+      
+      {/* Animated trail for the plane */}
+      <div className="absolute bottom-0 w-full h-1">
+        {/* Animated trail line */}
+        <div 
+          className="absolute bottom-0 h-1 bg-teal-500/30"
+          style={{ 
+            width: `${planePosition}px`,
+            left: 0,
+            backgroundImage: 'linear-gradient(to right, transparent, rgba(20, 184, 166, 0.7))'
+          }}
+        />
+        
+        {/* Plane element */}
+        <motion.div 
+          ref={planeRef}
+          className="absolute -bottom-2"
+          initial={{ x: -50 }}
+          animate={{ x: '100vw' }}
+          transition={{ 
+            duration: 8,
+            repeat: Infinity,
+            repeatType: "loop",
+            ease: "linear"
+          }}
+        >
+          <Plane className="h-5 w-5 text-teal-600 transform rotate-45" />
+        </motion.div>
+      </div>
     </header>
-  )
+  );
 }
-
